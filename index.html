@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Yasis Breath Timer</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Yasis Breath">
+<meta name="theme-color" content="#1C1710">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiWWFzaXMgQnJlYXRoIFRpbWVyIiwic2hvcnRfbmFtZSI6Illhc2lzIEJyZWF0aCIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMUMxNzEwIiwidGhlbWVfY29sb3IiOiIjMUMxNzEwIn0=">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&family=Inter:wght@400;500&display=swap" rel="stylesheet">
@@ -76,6 +82,20 @@
   .toggle:focus-visible{outline:2px solid var(--sage);outline-offset:3px}
   .count{font-size:12px;color:var(--clay);opacity:.6;letter-spacing:.1em;font-variant-numeric:tabular-nums}
   .note{font-size:12px;line-height:1.5;color:var(--dim);text-align:center;max-width:310px}
+  .install-hint{
+    position:fixed;bottom:0;left:0;right:0;
+    background:var(--earth-2);border-top:1px solid var(--faint);
+    padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+    text-align:center;font-size:13px;line-height:1.5;color:var(--sand);
+    display:none;z-index:10;
+  }
+  .install-hint .share-icon{display:inline-block;width:16px;height:16px;vertical-align:text-bottom;margin:0 2px}
+  .install-hint button{
+    background:none;border:none;color:var(--clay);font-family:inherit;
+    font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+    cursor:pointer;margin-top:6px;display:block;margin-left:auto;margin-right:auto;padding:6px;
+  }
+  @media (display-mode: standalone){.install-hint{display:none!important}}
 </style>
 </head>
 <body>
@@ -144,8 +164,24 @@
     <p class="note">Slow, not big. Keep the breath easy — forcing it deep causes tingling and light-headedness.</p>
   </div>
 
+<div class="install-hint" id="installHint">
+  Tap <svg class="share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong> to use as an app
+  <button id="dismissInstall">Got it</button>
+</div>
+
 <script>
 (function(){
+  // Show install hint on iOS Safari when not already installed
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  const dismissed = sessionStorage.getItem('install-dismissed');
+  if (isIos && !isStandalone && !dismissed) {
+    document.getElementById('installHint').style.display = 'block';
+  }
+  document.getElementById('dismissInstall').addEventListener('click', function(){
+    document.getElementById('installHint').style.display = 'none';
+    sessionStorage.setItem('install-dismissed', '1');
+  });
   const IN=4, OUT=8, CYCLE=IN+OUT;
 
   const PRESETS = {
