@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yasis Breath Timer</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Yasis Breath">
+<meta name="theme-color" content="#1C1710">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiWWFzaXMgQnJlYXRoIFRpbWVyIiwic2hvcnRfbmFtZSI6Illhc2lzIEJyZWF0aCIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMUMxNzEwIiwidGhlbWVfY29sb3IiOiIjMUMxNzEwIn0=">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --earth:#1C1710; --earth-2:#262017; --clay:#B0896A;
+    --sage:#8FA77E; --terracotta:#C4785A; --sand:#E5D9C8;
+    --dim:#6B5F4E; --faint:#3D3529;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:radial-gradient(ellipse 130% 90% at 50% 10%, #2E261C 0%, var(--earth) 60%, #0F0D09 100%);
+    color:var(--sand); font-family:'Inter',system-ui,sans-serif;
+    min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:clamp(14px,3vh,26px); padding:24px 20px calc(24px + env(safe-area-inset-bottom));
+    -webkit-tap-highlight-color:transparent;
+  }
+  .title{
+    font-family:'Fraunces',Georgia,serif; font-weight:400;
+    font-size:clamp(18px,4.5vw,24px); letter-spacing:.04em; color:var(--clay);
+  }
+  .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--clay);opacity:.7}
+  .stage{width:100%;max-width:620px}
+  svg{width:100%;height:auto;display:block;overflow:visible}
+  .track{fill:none;stroke:var(--faint);stroke-width:1.5;stroke-linecap:round}
+  .trace{fill:none;stroke:url(#breathGrad);stroke-width:3;stroke-linecap:round}
+
+  .readout{text-align:center;max-width:520px;min-height:118px;display:flex;flex-direction:column;justify-content:center;gap:12px}
+  .phrase{
+    font-family:'Fraunces',Georgia,serif; font-weight:300;
+    font-size:clamp(21px,5.4vw,31px); line-height:1.42; letter-spacing:-.005em;
+    background-image:linear-gradient(90deg, var(--lit) 0%, var(--lit) var(--p), var(--dim) var(--p), var(--dim) 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    --p:0%; --lit:var(--clay);
+  }
+  .phase{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--clay);opacity:.65;font-variant-numeric:tabular-nums}
+
+  .controls{display:flex;flex-direction:column;align-items:center;gap:15px;width:100%;max-width:350px}
+  .play{
+    font-family:inherit;font-size:15px;font-weight:500;letter-spacing:.04em;
+    color:var(--earth);background:var(--sand);border:none;border-radius:999px;
+    padding:15px 46px;cursor:pointer;transition:transform .15s ease,background .2s ease;
+  }
+  .play:hover{background:#F0E8DA}
+  .play:active{transform:scale(.97)}
+  .play:focus-visible{outline:2px solid var(--sage);outline-offset:3px}
+
+  .row{display:flex;align-items:center;gap:12px;width:100%}
+  .row label{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--clay);white-space:nowrap;opacity:.7}
+  select{
+    flex:1;appearance:none;background:var(--earth-2);color:var(--sand);
+    border:1px solid var(--faint);border-radius:10px;padding:11px 34px 11px 13px;
+    font-family:inherit;font-size:14px;cursor:pointer;
+    background-image:linear-gradient(45deg,transparent 50%,var(--clay) 50%),linear-gradient(135deg,var(--clay) 50%,transparent 50%);
+    background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  }
+  select:focus-visible{outline:2px solid var(--sage);outline-offset:2px}
+  optgroup{background:var(--earth-2);color:var(--clay)}
+  option{background:var(--earth-2);color:var(--sand)}
+  input[type=range]{flex:1;accent-color:var(--sage);height:22px}
+  input[type=range]:focus-visible{outline:2px solid var(--sage);outline-offset:4px}
+  .toggle{
+    background:none;border:1px solid var(--faint);color:var(--clay);font-family:inherit;
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:9px 16px;
+    border-radius:999px;cursor:pointer;
+  }
+  .toggle[aria-pressed="true"]{border-color:var(--sage);color:var(--sage)}
+  .toggle:focus-visible{outline:2px solid var(--sage);outline-offset:3px}
+  .count{font-size:12px;color:var(--clay);opacity:.6;letter-spacing:.1em;font-variant-numeric:tabular-nums}
+  .note{font-size:12px;line-height:1.5;color:var(--dim);text-align:center;max-width:310px}
+  .install-hint{
+    position:fixed;bottom:0;left:0;right:0;
+    background:var(--earth-2);border-top:1px solid var(--faint);
+    padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+    text-align:center;font-size:13px;line-height:1.5;color:var(--sand);
+    display:none;z-index:10;
+  }
+  .install-hint .share-icon{display:inline-block;width:16px;height:16px;vertical-align:text-bottom;margin:0 2px}
+  .install-hint button{
+    background:none;border:none;color:var(--clay);font-family:inherit;
+    font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+    cursor:pointer;margin-top:6px;display:block;margin-left:auto;margin-right:auto;padding:6px;
+  }
+  @media (display-mode: standalone){.install-hint{display:none!important}}
+</style>
+</head>
+<body>
+
+  <p class="title">Yasis Breath Timer</p>
+  <p class="eyebrow">Four in &nbsp;·&nbsp; eight out</p>
+
+  <div class="stage">
+    <svg viewBox="0 0 600 190" aria-hidden="true">
+      <defs>
+        <linearGradient id="breathGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#8FA77E"/><stop offset="33%" stop-color="#B0A07A"/><stop offset="100%" stop-color="#C4785A"/>
+        </linearGradient>
+      </defs>
+      <path id="track" class="track"/>
+      <line x1="200" y1="24" x2="200" y2="176" stroke="#3D3529" stroke-width="1" stroke-dasharray="3 5" opacity=".55"/>
+      <path id="trace" class="trace"/>
+      <circle id="dot" r="7" fill="#8FA77E" cx="20" cy="176"/>
+    </svg>
+  </div>
+
+  <div class="readout">
+    <div id="phrase" class="phrase">Press start, and breathe with the line</div>
+    <div id="phase" class="phase">ready</div>
+  </div>
+
+  <div class="controls">
+    <button id="play" class="play">Start</button>
+
+    <div class="row">
+      <label for="preset">Words</label>
+      <select id="preset">
+        <optgroup label="English">
+          <option value="soft-en" selected>Softening — jaw, shoulders, belly</option>
+          <option value="wave-en">The wave — it rises and rolls away</option>
+          <option value="work-en">Working — my body knows this</option>
+          <option value="close-en">Closer — every breath brings you nearer</option>
+          <option value="count-en">Counting — 1 2 3 4 / 8 7 6 5…</option>
+        </optgroup>
+        <optgroup label="Nederlands">
+          <option value="soft-nl">Zacht worden — kaak, schouders, buik</option>
+          <option value="wave-nl">De golf — hij rolt en glijdt weg</option>
+          <option value="work-nl">Aan het werk — mijn lichaam weet dit</option>
+          <option value="close-nl">Dichter bij — tot in mijn armen</option>
+          <option value="count-nl">Aftellen — 1 2 3 4 / 8 7 6 5…</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="sound">Sound</label>
+      <select id="sound">
+        <option value="smooth" selected>Gliding tone only</option>
+        <option value="marks">Tone + turn markers</option>
+        <option value="counts">Tone + per-second counts</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="vol">Volume</label>
+      <input id="vol" type="range" min="0" max="100" value="55">
+    </div>
+
+    <button id="buzz" class="toggle" aria-pressed="false">Vibrate on turn</button>
+    <p id="count" class="count">0 breaths</p>
+    <p class="note">Slow, not big. Keep the breath easy — forcing it deep causes tingling and light-headedness.</p>
+  </div>
+
+<div class="install-hint" id="installHint">
+  Tap <svg class="share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong> to use as an app
+  <button id="dismissInstall">Got it</button>
+</div>
+
+<script>
+(function(){
+  // Show install hint on iOS Safari when not already installed
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  const dismissed = sessionStorage.getItem('install-dismissed');
+  if (isIos && !isStandalone && !dismissed) {
+    document.getElementById('installHint').style.display = 'block';
+  }
+  document.getElementById('dismissInstall').addEventListener('click', function(){
+    document.getElementById('installHint').style.display = 'none';
+    sessionStorage.setItem('install-dismissed', '1');
+  });
+  const IN=4, OUT=8, CYCLE=IN+OUT;
+
+  const PRESETS = {
+    'soft-en':  { in:"I'm filling, easy and slow",
+                  out:"jaw loose, shoulders heavy, belly warm and soft, letting everything go" },
+    'wave-en':  { in:"Here it comes, the next wave, rising",
+                  out:"and it moves through me and it softens and it slowly rolls away" },
+    'work-en':  { in:"This is my body working",
+                  out:"strong and steady, doing exactly what it knows how to do" },
+    'close-en': { in:"One more wave, and we are closer",
+                  out:"every breath brings you a little further down and into my arms" },
+    'count-en': { in:"one … two … three … four",
+                  out:"eight … seven … six … five … four … three … two … one" },
+    'soft-nl':  { in:"Ik vul me rustig en traag",
+                  out:"kaak los, schouders zwaar, buik warm en zacht, en ik laat alles gaan" },
+    'wave-nl':  { in:"Daar komt hij, de volgende golf",
+                  out:"en hij rolt door mij heen, wordt zachter, en glijdt langzaam weer weg" },
+    'work-nl':  { in:"Dit is mijn lichaam aan het werk",
+                  out:"sterk en rustig, en het doet precies wat het vanzelf al weet" },
+    'close-nl': { in:"Nog een golf, en we zijn dichter",
+                  out:"elke ademtocht brengt jou een stukje verder, tot in mijn armen" },
+    'count-nl': { in:"één … twee … drie … vier",
+                  out:"acht … zeven … zes … vijf … vier … drie … twee … één" }
+  };
+  let words = PRESETS['soft-en'];
+
+  const X0=20,X1=580,BASE=176,PEAK=26,N=300;
+  const pts=[];
+  const ease=u=>0.5*(1-Math.cos(Math.PI*u));
+  for(let i=0;i<=N;i++){
+    const p=i/N;
+    const h=p<=IN/CYCLE?ease(p*CYCLE/IN):1-ease((p-IN/CYCLE)*CYCLE/OUT);
+    pts.push({x:X0+p*(X1-X0),y:BASE-h*(BASE-PEAK)});
+  }
+  const toPath=a=>a.map((q,i)=>(i?'L':'M')+q.x.toFixed(1)+' '+q.y.toFixed(1)).join(' ');
+  document.getElementById('track').setAttribute('d',toPath(pts));
+
+  const trace=document.getElementById('trace'),dot=document.getElementById('dot');
+  const phraseEl=document.getElementById('phrase'),phaseEl=document.getElementById('phase');
+  const countEl=document.getElementById('count'),playBtn=document.getElementById('play');
+  const volEl=document.getElementById('vol'),buzzBtn=document.getElementById('buzz');
+  const presetEl=document.getElementById('preset'),soundEl=document.getElementById('sound');
+
+  let ctx=null,master=null,running=false,cycleStart=0,nextCycle=0,schedTimer=null,raf=null;
+  let breaths=0,lastPhase=null,buzz=false,sound='smooth';
+
+  function initAudio(){
+    if(ctx)return;
+    ctx=new(window.AudioContext||window.webkitAudioContext)();
+    master=ctx.createGain(); master.gain.value=volEl.value/100*0.6;
+    master.connect(ctx.destination);
+  }
+
+  function pad(t0,dur,f0,f1,peak){
+    const o=ctx.createOscillator(),o2=ctx.createOscillator();
+    const g=ctx.createGain(),g2=ctx.createGain(),lp=ctx.createBiquadFilter();
+    lp.type='lowpass';lp.frequency.value=1200;lp.Q.value=0.5;
+    o.type='sine';o2.type='triangle';g2.gain.value=0.18;
+    [o,o2].forEach(osc=>{osc.frequency.setValueAtTime(f0,t0);osc.frequency.linearRampToValueAtTime(f1,t0+dur);});
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(peak,t0+Math.min(0.6,dur*0.15));
+    g.gain.setValueAtTime(peak,t0+dur*0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+    o.connect(lp);o2.connect(g2);g2.connect(lp);lp.connect(g);g.connect(master);
+    o.start(t0);o2.start(t0);o.stop(t0+dur+0.05);o2.stop(t0+dur+0.05);
+  }
+
+  function tick(t0,bright){
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.type=bright?'triangle':'sine';
+    o.frequency.setValueAtTime(bright?880:330,t0);
+    if(!bright)o.frequency.exponentialRampToValueAtTime(240,t0+0.3);
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(bright?0.13:0.09,t0+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+(bright?0.14:0.36));
+    o.connect(g);g.connect(master);o.start(t0);o.stop(t0+0.45);
+  }
+
+  function scheduleCycle(t0){
+    pad(t0,IN,190,300,0.14);pad(t0+IN,OUT,300,135,0.12);
+    if(sound==='counts'){for(let i=0;i<IN;i++)tick(t0+i,true);for(let i=0;i<OUT;i++)tick(t0+IN+i,false);}
+    else if(sound==='marks'){tick(t0,true);tick(t0+IN,false);}
+  }
+
+  function scheduler(){while(nextCycle<ctx.currentTime+1.5){scheduleCycle(nextCycle);nextCycle+=CYCLE;}}
+
+  function draw(){
+    const t=((ctx.currentTime-cycleStart)%CYCLE+CYCLE)%CYCLE;
+    const idx=Math.min(N,Math.floor(t/CYCLE*N));
+    trace.setAttribute('d',toPath(pts.slice(0,idx+1)));
+    dot.setAttribute('cx',pts[idx].x);dot.setAttribute('cy',pts[idx].y);
+    const inhaling=t<IN;
+    const prog=inhaling?t/IN:(t-IN)/OUT;
+    phraseEl.textContent=inhaling?words.in:words.out;
+    phraseEl.style.setProperty('--p',(prog*100).toFixed(1)+'%');
+    phraseEl.style.setProperty('--lit',inhaling?'var(--sage)':'var(--terracotta)');
+    dot.setAttribute('fill',inhaling?'#8FA77E':'#C4785A');
+    phaseEl.textContent=(inhaling?'breathe in · ':'breathe out · ')+(inhaling?IN-Math.floor(t):OUT-Math.floor(t-IN));
+    const phase=inhaling?'in':'out';
+    if(phase!==lastPhase){
+      if(lastPhase==='out'){breaths++;countEl.textContent=breaths+(breaths===1?' breath':' breaths');}
+      if(buzz&&navigator.vibrate)navigator.vibrate(inhaling?45:[30,60,30]);
+      lastPhase=phase;
+    }
+    raf=requestAnimationFrame(draw);
+  }
+
+  function start(){
+    initAudio();ctx.resume();
+    const t0=ctx.currentTime+0.2;
+    cycleStart=t0;nextCycle=t0;lastPhase=null;
+    scheduler();schedTimer=setInterval(scheduler,250);
+    raf=requestAnimationFrame(draw);
+    running=true;playBtn.textContent='Pause';
+  }
+
+  function stop(){
+    running=false;clearInterval(schedTimer);cancelAnimationFrame(raf);
+    if(ctx)ctx.suspend();playBtn.textContent='Start';
+    phraseEl.style.setProperty('--p','0%');
+    phraseEl.style.setProperty('--lit','var(--clay)');
+    phaseEl.textContent='paused';
+  }
+
+  playBtn.addEventListener('click',()=>running?stop():start());
+  soundEl.addEventListener('change',()=>{sound=soundEl.value;});
+  presetEl.addEventListener('change',()=>{
+    words=PRESETS[presetEl.value];
+    if(!running){phraseEl.textContent=words.in;phraseEl.style.setProperty('--p','0%');phraseEl.style.setProperty('--lit','var(--clay)');}
+  });
+  volEl.addEventListener('input',()=>{if(master)master.gain.value=volEl.value/100*0.6;});
+  buzzBtn.addEventListener('click',()=>{
+    buzz=!buzz;buzzBtn.setAttribute('aria-pressed',String(buzz));
+    if(buzz&&navigator.vibrate)navigator.vibrate(30);
+  });
+})();
+</script>
+</body>
+</html>
