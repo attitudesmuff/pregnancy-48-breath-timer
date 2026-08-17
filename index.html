@@ -9,7 +9,9 @@
 <meta name="apple-mobile-web-app-title" content="Yasis Breath">
 <meta name="theme-color" content="#1C1710">
 <meta name="mobile-web-app-capable" content="yes">
-<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiWWFzaXMgQnJlYXRoIFRpbWVyIiwic2hvcnRfbmFtZSI6Illhc2lzIEJyZWF0aCIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMUMxNzEwIiwidGhlbWVfY29sb3IiOiIjMUMxNzEwIn0=">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&family=Inter:wght@400;500&display=swap" rel="stylesheet">
@@ -128,6 +130,9 @@
   Tap <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong>
   <button id="dismissInstall">Got it</button>
 </div>
+<script>
+if('serviceWorker' in navigator){try{navigator.serviceWorker.register('service-worker.js');}catch(err){}}
+</script>
 <script>
 (function(){
 var isIos=/iphone|ipad|ipod/i.test(navigator.userAgent);
