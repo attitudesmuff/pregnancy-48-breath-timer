@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Yasis Breath Timer</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -22,13 +22,26 @@
     --dim:#5A5040;--faint:#3D3529;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%}
+  html{height:100%;background:#0F0D09}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   body{
+    position:fixed;inset:0;width:100%;
     background:radial-gradient(ellipse 130% 90% at 50% 10%,#2E261C 0%,var(--earth) 60%,#0F0D09 100%);
     color:var(--sand);font-family:'Inter',system-ui,sans-serif;
-    min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:clamp(12px,2.5vh,22px);padding:20px 20px calc(20px + env(safe-area-inset-bottom));
-    -webkit-tap-highlight-color:transparent;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:clamp(10px,2.2vh,20px);padding:16px 20px calc(16px + env(safe-area-inset-bottom));
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  }
+  @media(max-height:720px){
+    body{gap:8px;padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+    .title{font-size:16px}
+    .eyebrow{font-size:10px}
+    .stage{max-width:430px}
+    .readout{min-height:84px;gap:6px}
+    .phrase{font-size:clamp(17px,4.6vw,25px)}
+    .controls{gap:10px}
+    .play{padding:12px 38px}
+    .note{font-size:11px;line-height:1.4;max-width:280px}
   }
   .title{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:clamp(18px,4.5vw,24px);letter-spacing:.04em;color:var(--clay)}
   .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--clay);opacity:.7}
