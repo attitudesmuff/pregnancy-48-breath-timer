@@ -139,6 +139,7 @@
   <p id="count" class="count">0 breaths</p>
   <p class="note">Slow, not big. Keep the breath easy — forcing it deep causes tingling and light-headedness.</p>
   <p id="iosNote" class="note" style="display:none">On iPhone, if you hear no sound, check the mute switch on the side of the phone — it silences web-app audio too.</p>
+  <p id="audioStatus" class="note" style="display:none"></p>
 </div>
 <div class="install-hint" id="installHint">
   Tap <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong>
@@ -293,18 +294,61 @@ function lightWords(prog,cls){
 renderWords("press start, and breathe with the line");
 
 // ── AUDIO ──
-// iOS Safari gotchas handled here:
+// iOS Safari is strict about Web Audio. Gotchas handled here:
 //  1) The AudioContext must be created AND resumed inside a user gesture, so we
 //     unlock it on the first touch anywhere on the page, not just on Start.
-//  2) iOS's suspend()/resume() is unreliable (after suspend, resume() can stay
+//  2) On some iOS versions ctx.resume() returns a promise that never settles.
+//     We NEVER wait on that promise — we poll ctx.state and keep re-resuming
+//     until it is running (or give up with a visible message).
+//  3) Playing an actual (near-silent) sound inside the gesture is what really
+//     opens the iOS audio session, so we blip an oscillator and play a silent
+//     <audio> element during unlock.
+//  4) iOS's suspend()/resume() is unreliable (after suspend, resume() can stay
 //     silent), so Pause never suspends the context — it stops live nodes and
 //     mutes the master gain instead. The context stays running.
 var unlocked=false,liveNodes=[];
 function track(n){liveNodes.push(n);n.onended=function(){var i=liveNodes.indexOf(n);if(i>-1)liveNodes.splice(i,1);};}
 function killAll(){liveNodes.slice().forEach(function(n){try{n.stop();}catch(e){}});liveNodes=[];}
 function initAudio(){if(ctx)return;ctx=new(window.AudioContext||window.webkitAudioContext)();master=ctx.createGain();master.gain.value=volEl.value/100*.6;master.connect(ctx.destination);}
-function unlockAudio(){if(unlocked)return;unlocked=true;initAudio();if(ctx.state==='suspended')ctx.resume().catch(function(){});}
+function pump(){if(!ctx||ctx.state!=='suspended')return;try{var p=ctx.resume();if(p&&p.catch)p.catch(function(){});}catch(e){}}
+function setAudioStatus(txt){var el=document.getElementById('audioStatus');if(!el)return;el.textContent=txt;el.style.display=txt?'block':'none';}
+function unlockAudio(){
+  if(unlocked)return;unlocked=true;
+  initAudio();pump();warmMedia();
+  // iOS can drop the first resume — keep nudging until it is running
+  var n=0,iv=setInterval(function(){
+    if(!ctx||ctx.state==='running'){clearInterval(iv);return;}
+    if(++n>8){clearInterval(iv);return;}
+    pump();
+  },150);
+}
 ['pointerdown','touchstart'].forEach(function(evt){document.addEventListener(evt,unlockAudio,{once:true,passive:true});});
+function ping(){
+  if(!ctx||ctx.state!=='running')return;
+  try{
+    var o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=440;g.gain.value=.0001;
+    o.connect(g);g.connect(master);
+    o.start();o.stop(ctx.currentTime+.04);
+  }catch(e){}
+}
+// Extra unlock insurance: a silent <audio> element played in the same gesture.
+var warmEl=null;
+function warmMedia(){
+  if(warmEl)return;
+  try{
+    var sr=44100,n=1024,buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+    var s=function(o,str){for(var i=0;i<str.length;i++)v.setUint8(o+i,str.charCodeAt(i));};
+    s(0,'RIFF');v.setUint32(4,36+n*2,true);s(8,'WAVE');s(12,'fmt ');v.setUint32(16,16,true);
+    v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);
+    v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);
+    s(36,'data');v.setUint32(40,n*2,true);
+    var bytes=new Uint8Array(buf),bin='';
+    for(var i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
+    warmEl=new Audio('data:audio/wav;base64,'+btoa(bin));
+    warmEl.volume=0;warmEl.play().catch(function(){});
+  }catch(e){}
+}
 function pad(t0,dur,f0,f1,peak){
   var o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain(),g2=ctx.createGain(),lp=ctx.createBiquadFilter();
   lp.type='lowpass';lp.frequency.value=1200;lp.Q.value=.5;o.type='sine';o2.type='triangle';g2.gain.value=.18;
@@ -351,13 +395,28 @@ function start(){
   var my=++startToken;
   running=true;playBtn.textContent='Pause';
   if(master)master.gain.value=volEl.value/100*.6;
-  ctx.resume().then(function(){
+  var go=function(){
     if(!running||my!==startToken)return;
     var t0=ctx.currentTime+.2;
     cycleStart=t0;nextCycle=t0;lastPhase=null;
     scheduler();schedTimer=setInterval(scheduler,250);
     raf=requestAnimationFrame(draw);
-  }).catch(function(){if(my===startToken){running=false;playBtn.textContent='Start';}});
+    setAudioStatus('audio: running');
+  };
+  var fail=function(){
+    if(my!==startToken)return;
+    running=false;playBtn.textContent='Start';
+    setAudioStatus('audio blocked — check the mute switch, then tap Start again');
+  };
+  var attempt=function(k){
+    if(!running||my!==startToken)return;
+    if(ctx.state==='running'){go();return;}
+    if(ctx.state==='suspended'&&k<6){pump();setTimeout(function(){attempt(k+1);},150);}
+    else{fail();}
+  };
+  ping();
+  if(ctx.state==='running'){go();}
+  else{pump();attempt(1);}
 }
 function stop(){
   running=false;startToken++;
@@ -368,6 +427,7 @@ function stop(){
   playBtn.textContent='Start';
   renderWords(words.in);wordSpans.forEach(function(s){s.className='w';});
   phaseEl.textContent='paused';
+  setAudioStatus('');
 }
 
 playBtn.addEventListener('click',function(){running?stop():start();});
