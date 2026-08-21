@@ -138,6 +138,7 @@
   <button id="buzz" class="toggle" aria-pressed="false">Vibrate on turn</button>
   <p id="count" class="count">0 breaths</p>
   <p class="note">Slow, not big. Keep the breath easy — forcing it deep causes tingling and light-headedness.</p>
+  <p id="iosNote" class="note" style="display:none">On iPhone, if you hear no sound, check the mute switch on the side of the phone — it silences web-app audio too.</p>
 </div>
 <div class="install-hint" id="installHint">
   Tap <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong>
@@ -154,6 +155,8 @@ if(isIos&&!isSA&&!sessionStorage.getItem('ih'))document.getElementById('installH
 document.getElementById('dismissInstall').addEventListener('click',function(){document.getElementById('installHint').style.display='none';sessionStorage.setItem('ih','1');});
 
 var IN=4,OUT=8,CYCLE=IN+OUT;
+var isIos=/iphone|ipad|ipod/i.test(navigator.userAgent);
+if(isIos)document.getElementById('iosNote').style.display='block';
 
 var P={
   // ── MIDWIFE'S PHRASE: each wave brings me closer ──
@@ -270,7 +273,7 @@ var countEl=document.getElementById('count'),playBtn=document.getElementById('pl
 var volEl=document.getElementById('vol'),buzzBtn=document.getElementById('buzz');
 var presetEl=document.getElementById('preset'),soundEl=document.getElementById('sound');
 
-var ctx=null,master=null,running=false,cycleStart=0,nextCycle=0,schedTimer=null,raf=null;
+var ctx=null,master=null,running=false,cycleStart=0,nextCycle=0,schedTimer=null,raf=null,startToken=0;
 var breaths=0,lastPhase=null,buzz=false,sound='smooth';
 var currentText='',wordSpans=[];
 
@@ -290,7 +293,18 @@ function lightWords(prog,cls){
 renderWords("press start, and breathe with the line");
 
 // ── AUDIO ──
+// iOS Safari gotchas handled here:
+//  1) The AudioContext must be created AND resumed inside a user gesture, so we
+//     unlock it on the first touch anywhere on the page, not just on Start.
+//  2) iOS's suspend()/resume() is unreliable (after suspend, resume() can stay
+//     silent), so Pause never suspends the context — it stops live nodes and
+//     mutes the master gain instead. The context stays running.
+var unlocked=false,liveNodes=[];
+function track(n){liveNodes.push(n);n.onended=function(){var i=liveNodes.indexOf(n);if(i>-1)liveNodes.splice(i,1);};}
+function killAll(){liveNodes.slice().forEach(function(n){try{n.stop();}catch(e){}});liveNodes=[];}
 function initAudio(){if(ctx)return;ctx=new(window.AudioContext||window.webkitAudioContext)();master=ctx.createGain();master.gain.value=volEl.value/100*.6;master.connect(ctx.destination);}
+function unlockAudio(){if(unlocked)return;unlocked=true;initAudio();if(ctx.state==='suspended')ctx.resume().catch(function(){});}
+['pointerdown','touchstart'].forEach(function(evt){document.addEventListener(evt,unlockAudio,{once:true,passive:true});});
 function pad(t0,dur,f0,f1,peak){
   var o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain(),g2=ctx.createGain(),lp=ctx.createBiquadFilter();
   lp.type='lowpass';lp.frequency.value=1200;lp.Q.value=.5;o.type='sine';o2.type='triangle';g2.gain.value=.18;
@@ -298,6 +312,7 @@ function pad(t0,dur,f0,f1,peak){
   g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(peak,t0+Math.min(.6,dur*.15));
   g.gain.setValueAtTime(peak,t0+dur*.7);g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
   o.connect(lp);o2.connect(g2);g2.connect(lp);lp.connect(g);g.connect(master);
+  track(o);track(o2);
   o.start(t0);o2.start(t0);o.stop(t0+dur+.05);o2.stop(t0+dur+.05);
 }
 function tick(t0,bright){
@@ -305,7 +320,7 @@ function tick(t0,bright){
   o.frequency.setValueAtTime(bright?880:330,t0);if(!bright)o.frequency.exponentialRampToValueAtTime(240,t0+.3);
   g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(bright?.13:.09,t0+.012);
   g.gain.exponentialRampToValueAtTime(.0001,t0+(bright?.14:.36));
-  o.connect(g);g.connect(master);o.start(t0);o.stop(t0+.45);
+  o.connect(g);g.connect(master);track(o);o.start(t0);o.stop(t0+.45);
 }
 function scheduleCycle(t0){
   pad(t0,IN,190,300,.14);pad(t0+IN,OUT,300,135,.12);
@@ -331,8 +346,29 @@ function draw(){
   }
   raf=requestAnimationFrame(draw);
 }
-function start(){initAudio();ctx.resume();var t0=ctx.currentTime+.2;cycleStart=t0;nextCycle=t0;lastPhase=null;scheduler();schedTimer=setInterval(scheduler,250);raf=requestAnimationFrame(draw);running=true;playBtn.textContent='Pause';}
-function stop(){running=false;clearInterval(schedTimer);cancelAnimationFrame(raf);if(ctx)ctx.suspend();playBtn.textContent='Start';renderWords(words.in);wordSpans.forEach(function(s){s.className='w';});phaseEl.textContent='paused';}
+function start(){
+  initAudio();
+  var my=++startToken;
+  running=true;playBtn.textContent='Pause';
+  if(master)master.gain.value=volEl.value/100*.6;
+  ctx.resume().then(function(){
+    if(!running||my!==startToken)return;
+    var t0=ctx.currentTime+.2;
+    cycleStart=t0;nextCycle=t0;lastPhase=null;
+    scheduler();schedTimer=setInterval(scheduler,250);
+    raf=requestAnimationFrame(draw);
+  }).catch(function(){if(my===startToken){running=false;playBtn.textContent='Start';}});
+}
+function stop(){
+  running=false;startToken++;
+  clearInterval(schedTimer);schedTimer=null;
+  cancelAnimationFrame(raf);
+  killAll();
+  if(master)master.gain.value=0;
+  playBtn.textContent='Start';
+  renderWords(words.in);wordSpans.forEach(function(s){s.className='w';});
+  phaseEl.textContent='paused';
+}
 
 playBtn.addEventListener('click',function(){running?stop():start();});
 soundEl.addEventListener('change',function(){sound=soundEl.value;});
