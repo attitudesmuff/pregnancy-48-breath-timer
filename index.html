@@ -129,10 +129,19 @@
   </div>
   <div class="row"><label for="sound">Sound</label>
     <select id="sound">
-      <option value="soft" selected>Soft glide</option>
-      <option value="deep">Deep wave</option>
-      <option value="bright">Bright wave</option>
-      <option value="flute">Flute tone</option>
+      <optgroup label="Tones">
+        <option value="soft" selected>Soft glide</option>
+        <option value="deep">Deep wave</option>
+        <option value="bright">Bright wave</option>
+        <option value="flute">Flute tone</option>
+      </optgroup>
+      <optgroup label="Songs · calm synth loops">
+        <option value="song-moonlight">Moonlight Sonata</option>
+        <option value="song-canon">Canon in D</option>
+        <option value="song-air">Air on the G String</option>
+        <option value="song-gymnopedie">Gymnopédie No. 1</option>
+        <option value="song-avemaria">Ave Maria</option>
+      </optgroup>
     </select>
   </div>
   <div class="row"><label for="vol">Volume</label><input id="vol" type="range" min="0" max="100" value="55"></div>
@@ -141,7 +150,7 @@
   <p class="note">Slow, not big. Keep the breath easy — forcing it deep causes tingling and light-headedness.</p>
   <p id="iosNote" class="note" style="display:none">On iPhone, if you hear no sound, check the mute switch on the side of the phone — it silences web-app audio too.</p>
   <p id="audioStatus" class="note" style="display:none"></p>
-  <p id="ver" class="count" style="opacity:.3">v4</p>
+  <p id="ver" class="count" style="opacity:.3">v5</p>
 </div>
 <div class="install-hint" id="installHint">
   Tap <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong>
@@ -276,7 +285,7 @@ var countEl=document.getElementById('count'),playBtn=document.getElementById('pl
 var volEl=document.getElementById('vol'),buzzBtn=document.getElementById('buzz');
 var presetEl=document.getElementById('preset'),soundEl=document.getElementById('sound');
 
-var ctx=null,master=null,running=false,nextCycle=0,schedTimer=null,raf=null,startToken=0;
+var ctx=null,master=null,songBus=null,running=false,nextCycle=0,schedTimer=null,raf=null,startToken=0;
 var T0=0,mode='none',modeTimer=null,fallbackEl=null;
 var breaths=0,lastPhase=null,buzz=false,sound='soft';
 var currentText='',wordSpans=[];
@@ -375,7 +384,13 @@ function glideWavUrl(){
     var a=1;if(i<fade)a=i/fade;else if(i>n-fade)a=(n-i)/fade;
     data[i]=snd*.5*a;
   }
-  var buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+  return wavFromData(data,sr);
+}
+// Shared WAV encoder (16-bit mono PCM) -> base64 data URI.
+// Chunked so no chunk except the last has btoa padding (padding mid-string
+// makes browsers' forgiving-base64 stop early — truncated audio).
+function wavFromData(data,sr){
+  var n=data.length,buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
   var s=function(o,str){for(var j=0;j<str.length;j++)v.setUint8(o+j,str.charCodeAt(j));};
   s(0,'RIFF');v.setUint32(4,36+n*2,true);s(8,'WAVE');s(12,'fmt ');v.setUint32(16,16,true);
   v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);
@@ -389,10 +404,101 @@ function glideWavUrl(){
   for(var i=0;i<bin.length;i+=chunk)b64+=btoa(bin.substr(i,chunk));
   return 'data:audio/wav;base64,'+b64;
 }
+// ── SONG LOOPS ──
+// Gentle synthesized arrangements of public-domain classics, written as one
+// 12-beat phrase at 60 BPM (4 beats in, 8 beats out, 3 bars of 4/4 or 4 bars
+// of 3/4) so the loop is exactly one breathing cycle. Notes are [midi,
+// startBeat, durBeats, vel]; converted to cycle fractions so they always span
+// exactly one cycle. Simplified renditions of the opening material — the
+// harmonic signature, not a recording.
+function midiHz(m){return 440*Math.pow(2,(m-69)/12);}
+function songFrac(s){s.tracks.forEach(function(tr){tr.notes.forEach(function(n){n[1]/=12;n[2]/=12;});});return s;}
+var SONGS={
+  'song-moonlight':songFrac({name:'Moonlight Sonata',tracks:[
+    {type:'bass',vol:.11,notes:[[36,0,4,1],[33,4,4,1],[36,8,4,1]]},
+    {type:'lead',vol:.07,notes:(function(){var a=[],pat=[[61,68,76,68],[57,64,73,64],[61,68,76,68]];
+      for(var b=0;b<3;b++)for(var k=0;k<12;k++)a.push([pat[b][k%4],b*4+k/3,.32,1]);return a;})()}
+  ]}),
+  'song-canon':songFrac({name:'Canon in D',tracks:[
+    {type:'bass',vol:.11,notes:[[38,0,4,1],[45,4,4,1],[47,8,4,1]]},
+    {type:'lead',vol:.07,notes:(function(){var a=[],pat=[[74,78,81,86,81,78,74,78],[69,73,76,81,76,73,69,73],[71,74,78,83,78,74,71,74]];
+      for(var b=0;b<3;b++)for(var k=0;k<8;k++)a.push([pat[b][k],b*4+k*.5,.48,1]);return a;})()}
+  ]}),
+  'song-air':songFrac({name:'Air on the G String',tracks:[
+    {type:'pad',vol:.05,pad:true,notes:[[50,0,12,1],[57,0,12,1],[62,0,12,1],[66,0,12,1]]},
+    {type:'lead',vol:.12,notes:[[62,0,2.5,1],[66,2.5,.5,1],[69,3,1,1],[71,4,1,1],[73,5,1,1],[74,6,2,1],[78,8,1,1],[76,9,1,1],[74,10,1,1],[73,11,1,1]]}
+  ]}),
+  'song-gymnopedie':songFrac({name:'Gymnopédie No. 1',tracks:[
+    {type:'pad',vol:.045,pad:true,notes:[[38,0,3,1],[45,0,3,1],[50,0,3,1],[54,0,3,1],[43,3,3,1],[50,3,3,1],[55,3,3,1],[59,3,3,1],[38,6,3,1],[45,6,3,1],[50,6,3,1],[54,6,3,1],[43,9,3,1],[50,9,3,1],[55,9,3,1],[59,9,3,1]]},
+    {type:'lead',vol:.12,notes:[[66,0,1.5,1],[64,1.5,.5,1],[62,2,1,1],[61,3,1,1],[62,4,1,1],[64,5,1,1],[66,6,1.5,1],[64,7.5,.5,1],[62,8,1,1],[61,9,1,1],[62,10,1,1],[64,11,1,1]]}
+  ]}),
+  'song-avemaria':songFrac({name:'Ave Maria',tracks:[
+    {type:'pad',vol:.045,pad:true,notes:[[46,0,4,1],[53,0,4,1],[58,0,4,1],[62,0,4,1],[51,4,4,1],[55,4,4,1],[58,4,4,1],[53,8,4,1],[57,8,4,1],[60,8,4,1]]},
+    {type:'lead',vol:.12,notes:[[74,0,1,1],[72,1,1,1],[70,2,2,1],[69,4,1,1],[70,5,1,1],[72,6,1,1],[74,7,1,1],[70,8,2,1],[72,10,1,1],[74,11,1,1]]}
+  ]})
+};
+function songDef(){return sound.indexOf('song-')===0?SONGS[sound]:null;}
+function ensureSongBus(){
+  if(songBus||!ctx)return;
+  songBus=ctx.createGain();songBus.gain.value=1;
+  var lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2600;lp.Q.value=.3;
+  songBus.connect(lp);lp.connect(master);
+  var dl=ctx.createDelay();dl.delayTime.value=.42;
+  var fb=ctx.createGain();fb.gain.value=.35;
+  var wet=ctx.createGain();wet.gain.value=.2;
+  songBus.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(wet);wet.connect(master);
+}
+function scheduleSong(t0){
+  var sd=songDef();if(!sd)return;
+  ensureSongBus();
+  sd.tracks.forEach(function(tr){
+    tr.notes.forEach(function(n){
+      var st=t0+n[1]*CYCLE,dur=n[2]*CYCLE,v=tr.vol*(n[3]||1);
+      var o=ctx.createOscillator(),g=ctx.createGain();
+      o.type=tr.type==='bass'?'sine':'sine';
+      o.frequency.value=midiHz(n[0]);
+      var att=tr.type==='pad'?.4:.05,rel=tr.type==='pad'?.6:.18;
+      g.gain.setValueAtTime(.0001,st);
+      g.gain.exponentialRampToValueAtTime(Math.max(.0002,v),st+att);
+      g.gain.setValueAtTime(Math.max(.0002,v),st+Math.max(att,dur-rel));
+      g.gain.exponentialRampToValueAtTime(.0001,st+dur);
+      o.connect(g);
+      if(tr.pad){var o2=ctx.createOscillator(),g2=ctx.createGain();o2.type='sine';o2.frequency.value=midiHz(n[0])*1.004;g2.gain.value=.8;o2.connect(g2);g2.connect(g);o2.start(st);o2.stop(st+dur+.1);track(o2);}
+      g.connect(songBus);
+      track(o);
+      o.start(st);o.stop(st+dur+.1);
+    });
+  });
+}
+// Render a song to PCM for the HTML5 fallback path.
+function renderSongWav(){
+  var sd=songDef();if(!sd)return null;
+  var sr=22050,n=Math.floor(sr*CYCLE),data=new Float32Array(n);
+  sd.tracks.forEach(function(tr){
+    tr.notes.forEach(function(note){
+      var f=midiHz(note[0]),v=tr.vol*(note[3]||1);
+      var att=tr.type==='pad'?.4:.05,rel=tr.type==='pad'?.6:.18;
+      var st=Math.floor(note[1]*CYCLE*sr),nd=Math.floor((note[1]+note[2])*CYCLE*sr);
+      var aI=Math.max(1,Math.floor(att*sr)),rI=Math.max(1,Math.floor(rel*sr));
+      for(var i=st;i<nd&&i<n;i++){
+        var t=(i-st)/sr,env=1;
+        if(i-st<aI)env=(i-st)/aI;
+        var rp=nd-i;if(rp<rI)env=Math.min(env,rp/rI);
+        data[i]+=Math.sin(2*Math.PI*f*t)*v*env;
+        if(tr.pad)data[i]+=Math.sin(2*Math.PI*f*1.004*t)*v*env*.8;
+      }
+    });
+  });
+  var peak=0;for(var i=0;i<n;i++){var a=Math.abs(data[i]);if(a>peak)peak=a;}
+  if(peak>.5){var s=.5/peak;for(var i=0;i<n;i++)data[i]*=s;}
+  return wavFromData(data,sr);
+}
+function fallbackSrc(){return songDef()?renderSongWav():glideWavUrl();}
+function audioLabel(){var sd=songDef();return sd?sd.name:null;}
 function primeFallback(){
   if(fallbackEl&&fallbackEl._wave!==sound){try{fallbackEl.pause();}catch(e){}fallbackEl=null;}
   if(!fallbackEl){
-    try{fallbackEl=new Audio(glideWavUrl());fallbackEl._wave=sound;}catch(e){return;}
+    try{fallbackEl=new Audio(fallbackSrc());fallbackEl._wave=sound;}catch(e){return;}
     fallbackEl.loop=true;
   }
   try{
@@ -421,6 +527,7 @@ function pad(t0,dur,f0,f1,peak){
   o.start(t0);o2.start(t0);o.stop(t0+dur+.05);o2.stop(t0+dur+.05);
 }
 function scheduleCycle(t0){
+  if(songDef()){scheduleSong(t0);return;}
   pad(t0,IN,190,300,.14);pad(t0+IN,OUT,300,135,.12);
 }
 function scheduler(){
@@ -469,9 +576,10 @@ function audioGo(){
 }
 function updateStatus(){
   if(!running)return;
-  if(mode==='web'){setAudioStatus('audio: running');}
+  var lbl=audioLabel();
+  if(mode==='web'){setAudioStatus(lbl?('audio: '+lbl):'audio: running');}
   else if(mode==='fallback'){
-    setAudioStatus(fallbackEl&&fallbackEl.volume>0?'audio: fallback tone':'audio blocked — check the mute switch, then tap Start again');
+    setAudioStatus(fallbackEl&&fallbackEl.volume>0?(lbl?('audio: '+lbl):'audio: fallback tone'):'audio blocked — check the mute switch, then tap Start again');
   }
   else if(ctx&&ctx.state==='suspended'){setAudioStatus('audio blocked — check the mute switch, then tap Start again');}
 }

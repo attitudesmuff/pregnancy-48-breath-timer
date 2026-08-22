@@ -113,6 +113,7 @@ function runScenario(name, ctxImpl) {
       createGain() { return new GainNode(); }
       createOscillator() { return new OscNode(this); }
       createBiquadFilter() { return new Biquad(); }
+      createDelay() { return { delayTime: { value: 0 }, connect() {}, disconnect() {} }; }
       resume() { this.state = 'running'; return Promise.resolve(); }
       suspend() { this.state = 'suspended'; return Promise.resolve(); }
     };
@@ -147,6 +148,7 @@ function runScenario(name, ctxImpl) {
       createGain() { return new GainNode(); }
       createOscillator() { return new OscNode(this); }
       createBiquadFilter() { return new Biquad(); }
+      createDelay() { return { delayTime: { value: 0 }, connect() {}, disconnect() {} }; }
       resume() { this.state = 'running'; return new Promise(() => {}); } // never settles!
       suspend() { this.state = 'suspended'; return Promise.resolve(); }
     };
@@ -167,6 +169,7 @@ function runScenario(name, ctxImpl) {
       createGain() { return new GainNode(); }
       createOscillator() { return new OscNode(this); }
       createBiquadFilter() { return new Biquad(); }
+      createDelay() { return { delayTime: { value: 0 }, connect() {}, disconnect() {} }; }
       resume() { return Promise.reject(new Error('not allowed to start')); }
       suspend() { return Promise.resolve(); }
     };
@@ -211,6 +214,7 @@ function runScenario(name, ctxImpl) {
       createGain() { return new GainNode(); }
       createOscillator() { return new OscNode(this); }
       createBiquadFilter() { return new Biquad(); }
+      createDelay() { return { delayTime: { value: 0 }, connect() {}, disconnect() {} }; }
       resume() { this.state = 'running'; return Promise.resolve(); }
       suspend() { this.state = 'suspended'; return Promise.resolve(); }
     };
@@ -225,6 +229,64 @@ function runScenario(name, ctxImpl) {
     s.tapStart();
     check('final stop clean', s.els.play.textContent === 'Start');
     s.cleanup();
+  }
+
+  // ── Scenario E: song mode (Moonlight, audio works) ──
+  {
+    const ctxImpl = class {
+      constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; this.oscs = []; }
+      createGain() { return new GainNode(); }
+      createOscillator() { return new OscNode(this); }
+      createBiquadFilter() { return new Biquad(); }
+      createDelay() { return { delayTime: { value: 0 }, connect() {}, disconnect() {} }; }
+      resume() { this.state = 'running'; return Promise.resolve(); }
+      suspend() { this.state = 'suspended'; return Promise.resolve(); }
+    };
+    const s = runScenario('E: song mode (Moonlight, web audio)', ctxImpl);
+    s.touch();
+    s.els.sound.value = 'song-moonlight';
+    (s.els.sound._listeners.change || []).forEach(f => f());
+    s.tapStart();
+    await s.sleep(900);
+    check('status shows song name', s.status() === 'audio: Moonlight Sonata', s.status());
+    check('moonlight arpeggio notes scheduled (C#4≈277Hz)', s.ctxObj.oscs.some(o => Math.abs(o.frequency.value - 277.18) < 1), 'oscs=' + s.ctxObj.oscs.length);
+    check('moonlight bass scheduled (C#2≈65Hz)', s.ctxObj.oscs.some(o => Math.abs(o.frequency.value - 65.41) < 1));
+    await s.sleep(1200);
+    const nE = parseInt(s.els.count.textContent) || 0;
+    check('counter advances in song mode', nE >= 1, s.els.count.textContent);
+    s.tapStart(); s.cleanup();
+  }
+
+  // ── Scenario F: song fallback (Canon in D, audio blocked) ──
+  {
+    const ctxImpl = class {
+      constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; this.oscs = []; }
+      createGain() { return new GainNode(); }
+      createOscillator() { return new OscNode(this); }
+      createBiquadFilter() { return new Biquad(); }
+      createDelay() { return { delayTime: { value: 0 }, connect() {}, disconnect() {} }; }
+      resume() { return Promise.reject(new Error('not allowed to start')); }
+      suspend() { return Promise.resolve(); }
+    };
+    const s = runScenario('F: song fallback (Canon in D, audio blocked)', ctxImpl);
+    s.touch();
+    s.els.sound.value = 'song-canon';
+    (s.els.sound._listeners.change || []).forEach(f => f());
+    s.tapStart();
+    await s.sleep(1100);
+    check('status = song fallback', s.status() === 'audio: Canon in D', s.status());
+    const fb = audioEls.filter(a => a.src && a.src.startsWith('data:audio/wav')).sort((x, y) => y.src.length - x.src.length)[0];
+    check('fallback WAV generated for song', !!fb, 'audioEls=' + audioEls.length);
+    if (fb) {
+      const buf = Buffer.from(fb.src.split(',')[1], 'base64');
+      const sr = buf.readUInt32LE(24), dataSize = buf.readUInt32LE(40), dur = dataSize / 2 / sr;
+      check('song WAV duration = cycle (1.2s fast)', Math.abs(dur - 1.2) < 0.01, 'dur=' + dur.toFixed(3));
+      check('song WAV not truncated', buf.length === 44 + dataSize, 'bytes=' + buf.length);
+      let max = 0;
+      for (let i = 44; i < Math.min(buf.length, 44 + 4000); i += 2) { const v = Math.abs(buf.readInt16LE(i)) / 32767; if (v > max) max = v; }
+      check('song WAV has audible content', max > 0.1, 'max=' + max.toFixed(3));
+    }
+    s.tapStart(); s.cleanup();
   }
 
   console.log('\n' + (failures === 0 ? 'ALL TESTS PASSED ✅' : failures + ' TEST(S) FAILED ❌'));
