@@ -231,7 +231,7 @@ function runScenario(name, ctxImpl) {
     s.cleanup();
   }
 
-  // ── Scenario E: song mode (Moonlight, audio works) ──
+  // ── Scenario E: song mode (Ode to Joy, audio works) ──
   {
     const ctxImpl = class {
       constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; this.oscs = []; }
@@ -242,15 +242,15 @@ function runScenario(name, ctxImpl) {
       resume() { this.state = 'running'; return Promise.resolve(); }
       suspend() { this.state = 'suspended'; return Promise.resolve(); }
     };
-    const s = runScenario('E: song mode (Moonlight, web audio)', ctxImpl);
+    const s = runScenario('E: song mode (Ode to Joy, web audio)', ctxImpl);
     s.touch();
-    s.els.sound.value = 'song-moonlight';
+    s.els.sound.value = 'song-ode';
     (s.els.sound._listeners.change || []).forEach(f => f());
     s.tapStart();
     await s.sleep(900);
-    check('status shows song name', s.status() === 'audio: Moonlight Sonata', s.status());
-    check('moonlight arpeggio notes scheduled (C#4≈277Hz)', s.ctxObj.oscs.some(o => Math.abs(o.frequency.value - 277.18) < 1), 'oscs=' + s.ctxObj.oscs.length);
-    check('moonlight bass scheduled (C#2≈65Hz)', s.ctxObj.oscs.some(o => Math.abs(o.frequency.value - 65.41) < 1));
+    check('status shows song name', s.status() === 'audio: Ode to Joy', s.status());
+    check('ode melody notes scheduled (E4≈329.6Hz)', s.ctxObj.oscs.some(o => Math.abs(o.frequency.value - 329.63) < 1), 'oscs=' + s.ctxObj.oscs.length);
+    check('ode G4 rising motif scheduled (G4≈392Hz)', s.ctxObj.oscs.some(o => Math.abs(o.frequency.value - 392.0) < 1));
     await s.sleep(1200);
     const nE = parseInt(s.els.count.textContent) || 0;
     check('counter advances in song mode', nE >= 1, s.els.count.textContent);
