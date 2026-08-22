@@ -52,7 +52,7 @@ class FakeAudio {
 }
 
 class OscNode {
-  constructor(ctx) { this.ctx = ctx; this.type = 'sine'; this.frequency = { value: 0, freqs: [], setValueAtTime(v, t) { this.freqs.push(v); }, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }; this.onended = null; this.startT = null; this.stopT = null; }
+  constructor(ctx) { this.ctx = ctx; this.type = 'sine'; this.frequency = { value: 0, freqs: [], setValueAtTime(v, t) { this.freqs.push(v); this.value = v; }, linearRampToValueAtTime(v, t) { this.freqs.push(v); }, exponentialRampToValueAtTime() {} }; this.onended = null; this.startT = null; this.stopT = null; }
   connect() {} disconnect() {}
   start(t) { this.startT = t; this.ctx.oscs.push(this); }
   stop(t) { this.stopT = t; if (this.onended) setTimeout(() => this.onended(), 0); }
@@ -231,7 +231,7 @@ function runScenario(name, ctxImpl) {
     s.cleanup();
   }
 
-  // ── Scenario E: song mode (Ode to Joy, audio works) ──
+  // ── Scenario E: song mode (Air on the G String, web audio) ──
   {
     const ctxImpl = class {
       constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; this.oscs = []; }
@@ -242,15 +242,15 @@ function runScenario(name, ctxImpl) {
       resume() { this.state = 'running'; return Promise.resolve(); }
       suspend() { this.state = 'suspended'; return Promise.resolve(); }
     };
-    const s = runScenario('E: song mode (Ode to Joy, web audio)', ctxImpl);
+    const s = runScenario('E: song mode (Air on the G String, web audio)', ctxImpl);
     s.touch();
-    s.els.sound.value = 'song-ode';
+    s.els.sound.value = 'song-air';
     (s.els.sound._listeners.change || []).forEach(f => f());
     s.tapStart();
     await s.sleep(900);
-    check('status shows song name', s.status() === 'audio: Ode to Joy', s.status());
-    check('ode melody notes scheduled (E4≈329.6Hz)', s.ctxObj.oscs.some(o => Math.abs(o.frequency.value - 329.63) < 1), 'oscs=' + s.ctxObj.oscs.length);
-    check('ode G4 rising motif scheduled (G4≈392Hz)', s.ctxObj.oscs.some(o => Math.abs(o.frequency.value - 392.0) < 1));
+    check('status shows song name', s.status() === 'audio: Air on the G String', s.status());
+    check('air melody glide scheduled (D4≈293.7Hz)', s.ctxObj.oscs.some(o => Math.abs(o.frequency.value - 293.66) < 1), 'oscs=' + s.ctxObj.oscs.length);
+    check('air F#4 glide target scheduled (≈370Hz)', s.ctxObj.oscs.some(o => o.frequency.freqs.some(f => Math.abs(f - 369.99) < 1)));
     await s.sleep(1200);
     const nE = parseInt(s.els.count.textContent) || 0;
     check('counter advances in song mode', nE >= 1, s.els.count.textContent);

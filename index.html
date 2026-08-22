@@ -135,13 +135,13 @@
         <option value="bright">Bright wave</option>
         <option value="flute">Flute tone</option>
       </optgroup>
-      <optgroup label="Songs · breathe with the melody">
+      <optgroup label="Songs · flowing melodies">
         <option value="song-canon">Canon in D</option>
-        <option value="song-ode">Ode to Joy</option>
-        <option value="song-nocturne">Nocturne No. 2</option>
+        <option value="song-moonlight">Moonlight Sonata</option>
         <option value="song-air">Air on the G String</option>
         <option value="song-avemaria">Ave Maria</option>
         <option value="song-swan">The Swan</option>
+        <option value="song-gymnopedie">Gymnopédie No. 1</option>
       </optgroup>
     </select>
   </div>
@@ -151,7 +151,7 @@
   <p class="note">Slow, not big. Keep the breath easy — forcing it deep causes tingling and light-headedness.</p>
   <p id="iosNote" class="note" style="display:none">On iPhone, if you hear no sound, check the mute switch on the side of the phone — it silences web-app audio too.</p>
   <p id="audioStatus" class="note" style="display:none"></p>
-  <p id="ver" class="count" style="opacity:.3">v6</p>
+  <p id="ver" class="count" style="opacity:.3">v7</p>
 </div>
 <div class="install-hint" id="installHint">
   Tap <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong>
@@ -286,7 +286,7 @@ var countEl=document.getElementById('count'),playBtn=document.getElementById('pl
 var volEl=document.getElementById('vol'),buzzBtn=document.getElementById('buzz');
 var presetEl=document.getElementById('preset'),soundEl=document.getElementById('sound');
 
-var ctx=null,master=null,songBus=null,running=false,nextCycle=0,schedTimer=null,raf=null,startToken=0;
+var ctx=null,master=null,songBus=null,glideVoice=null,running=false,nextCycle=0,schedTimer=null,raf=null,startToken=0;
 var T0=0,mode='none',modeTimer=null,fallbackEl=null;
 var breaths=0,lastPhase=null,buzz=false,sound='soft';
 var currentText='',wordSpans=[];
@@ -421,15 +421,15 @@ var SONGS={
     {type:'bass',vol:.13,notes:[[38,0,.9,1],[45,1,.9,1],[47,2,.9,1],[42,3,.9,1],[43,4,1.8,1],[38,6,1.8,1],[43,8,1.8,1],[38,10,1.8,1]]},
     {type:'pad',vol:.04,pad:true,notes:[[50,0,4,1],[54,0,4,1],[57,0,4,1],[55,4,8,1],[59,4,8,1],[62,4,8,1]]}
   ]}),
-  // The most famous melody in the world: rising E-E-F-G (in), arching G-F-E-D C-C-D-E (out)
-  'song-ode':songFrac({name:'Ode to Joy',tracks:[
-    {type:'lead',vol:.13,notes:[[64,0,1,1],[64,1,1,1],[65,2,1,1],[67,3,1,1],[67,4,1,1],[65,5,1,1],[64,6,1,1],[62,7,1,1],[60,8,1,1],[60,9,1,1],[62,10,1,1],[64,11,1,1]]},
-    {type:'pad',vol:.04,pad:true,notes:[[48,0,4,1],[52,0,4,1],[55,0,4,1],[48,4,4,1],[52,4,4,1],[55,4,4,1],[43,8,4,1],[47,8,4,1],[50,8,4,1]]}
+  // Continuous rippling arpeggio wave: C#m (in), A, C#m/G#, F#m (out) — like the real piece
+  'song-moonlight':songFrac({name:'Moonlight Sonata',tracks:[
+    {type:'lead',vol:.11,notes:[[61,0,1,1],[68,1,1,1],[76,2,1,1],[68,3,1,1],[57,4,1,1],[64,5,1,1],[73,6,1,1],[64,7,1,1],[61,8,1,1],[68,9,1,1],[76,10,1,1],[61,11,1,1]]},
+    {type:'pad',vol:.035,pad:true,notes:[[36,0,4,1],[45,0,4,1],[52,0,4,1],[33,4,4,1],[40,4,4,1],[49,4,4,1],[44,8,4,1],[49,8,4,1],[54,8,4,1]]}
   ]}),
-  // Romantic piano: rising Bb-C-D-Eb (in), the long Eb then falling D-C-Bb (out)
-  'song-nocturne':songFrac({name:'Nocturne No. 2',tracks:[
-    {type:'lead',vol:.13,notes:[[70,0,1,1],[72,1,1,1],[74,2,1,1],[75,3,1,1],[75,4,2,1],[74,6,1,1],[72,7,1,1],[70,8,4,1]]},
-    {type:'pad',vol:.04,pad:true,notes:[[51,0,4,1],[55,0,4,1],[58,0,4,1],[51,4,4,1],[55,4,4,1],[58,4,4,1],[46,8,4,1],[53,8,4,1],[58,8,4,1]]}
+  // Gentle undulating waltz: rising C#-D-E-F# (in), the melody's soft waves (out)
+  'song-gymnopedie':songFrac({name:'Gymnopédie No. 1',tracks:[
+    {type:'lead',vol:.12,notes:[[61,0,1,1],[62,1,1,1],[64,2,1,1],[66,3,1,1],[64,4,1,1],[62,5,1,1],[61,6,1,1],[62,7,1,1],[64,8,1,1],[66,9,1,1],[64,10,1,1],[61,11,1,1]]},
+    {type:'pad',vol:.04,pad:true,notes:[[38,0,3,1],[45,0,3,1],[50,0,3,1],[54,0,3,1],[43,3,3,1],[50,3,3,1],[55,3,3,1],[59,3,3,1],[38,6,3,1],[45,6,3,1],[50,6,3,1],[54,6,3,1],[43,9,3,1],[50,9,3,1],[55,9,3,1],[59,9,3,1]]}
   ]}),
   // Baroque strings: rising D-F#-A-B (in), the arch C#-D held, then falling back (out)
   'song-air':songFrac({name:'Air on the G String',tracks:[
@@ -461,49 +461,124 @@ function ensureSongBus(){
 function scheduleSong(t0){
   var sd=songDef();if(!sd)return;
   ensureSongBus();
-  var beat=CYCLE/12; // 1 beat = 1s at 60 BPM; scale with cycle
+  var beat=CYCLE/12;
   sd.tracks.forEach(function(tr){
-    tr.notes.forEach(function(n){
-      var st=t0+n[1]*CYCLE,dur=n[2]*CYCLE,v=tr.vol*(n[3]||1);
-      var o=ctx.createOscillator(),g=ctx.createGain();
-      o.type=tr.type==='bass'?'sine':'sine';
-      o.frequency.value=midiHz(n[0]);
-      var att=(tr.type==='pad'?.4:.05)*beat,rel=(tr.type==='pad'?.6:.18)*beat;
-      g.gain.setValueAtTime(.0001,st);
-      g.gain.exponentialRampToValueAtTime(Math.max(.0002,v),st+att);
-      g.gain.setValueAtTime(Math.max(.0002,v),st+Math.max(att,dur-rel));
-      g.gain.exponentialRampToValueAtTime(.0001,st+dur);
-      o.connect(g);
-      if(tr.pad){var o2=ctx.createOscillator(),g2=ctx.createGain();o2.type='sine';o2.frequency.value=midiHz(n[0])*1.004;g2.gain.value=.8;o2.connect(g2);g2.connect(g);o2.start(st);o2.stop(st+dur+.1);track(o2);}
-      g.connect(songBus);
-      track(o);
-      o.start(st);o.stop(st+dur+.1);
-    });
+    if(tr.type==='pad'){schedulePads(t0,tr,beat);}
+    else{scheduleGlide(t0,tr);}
   });
 }
-// Render a song to PCM for the HTML5 fallback path.
+// Sustained pads: per-note envelopes with slow attack/release (crossfade at
+// chord changes) — warm bed, no attack transients.
+function schedulePads(t0,tr,beat){
+  tr.notes.forEach(function(n){
+    var st=t0+n[1]*CYCLE,dur=n[2]*CYCLE,v=tr.vol*(n[3]||1);
+    var o=ctx.createOscillator(),g=ctx.createGain();
+    o.type='sine';o.frequency.value=midiHz(n[0]);
+    var att=1.0*beat,rel=1.2*beat;
+    g.gain.setValueAtTime(.0001,st);
+    g.gain.exponentialRampToValueAtTime(Math.max(.0002,v),st+att);
+    g.gain.setValueAtTime(Math.max(.0002,v),st+Math.max(att,dur-rel));
+    g.gain.exponentialRampToValueAtTime(.0001,st+dur);
+    o.connect(g);
+    var o2=ctx.createOscillator(),g2=ctx.createGain();
+    o2.type='sine';o2.frequency.value=midiHz(n[0])*1.004;g2.gain.value=.8;
+    o2.connect(g2);g2.connect(g);
+    o2.start(st);o2.stop(st+dur+.1);track(o2);
+    g.connect(songBus);track(o);
+    o.start(st);o.stop(st+dur+.1);
+  });
+}
+// Continuous glide voice: ONE oscillator per melody that slides smoothly
+// between notes (portamento). No attack/release per note — the pitch is the
+// only thing that moves, so it flows like a singing tone. The voice persists
+// across cycle boundaries (loop seam is silent) and fades only on stop.
+function untrack(n){var i=liveNodes.indexOf(n);if(i>-1)liveNodes.splice(i,1);}
+function stopGlide(fadeSec){
+  if(!glideVoice)return;
+  var gv=glideVoice,now=ctx.currentTime;
+  try{
+    gv.g.gain.cancelScheduledValues(now);
+    gv.g.gain.setTargetAtTime(.0001,now,fadeSec||.3);
+    gv.o.stop(now+1.5);
+    untrack(gv.o);
+  }catch(e){}
+  glideVoice=null;
+}
+function scheduleGlide(t0,tr){
+  if(glideVoice&&glideVoice.key!==tr)stopGlide(.25);
+  if(!glideVoice){
+    var o=ctx.createOscillator(),g=ctx.createGain();
+    o.type='sine';
+    o.frequency.setValueAtTime(midiHz(tr.notes[0][0]),t0);
+    g.gain.setValueAtTime(.0001,t0);
+    g.gain.exponentialRampToValueAtTime(tr.vol,t0+.5);
+    o.connect(g);g.connect(songBus);
+    o.start(t0);
+    track(o);
+    glideVoice={o:o,g:g,key:tr};
+  }
+  var notes=tr.notes;
+  for(var i=0;i<notes.length;i++){
+    var n=notes[i],next=notes[(i+1)%notes.length];
+    var st=t0+n[1]*CYCLE;
+    var nd=(next[1]<=n[1])?(t0+CYCLE):(t0+next[1]*CYCLE); // wrap glides back to first note
+    if(nd<=st)continue;
+    glideVoice.o.frequency.linearRampToValueAtTime(midiHz(next[0]),nd);
+  }
+}
+// Render a song to PCM for the HTML5 fallback path. Melodies render as the
+// same continuous glide (linear pitch interp); pads as sustained tones.
 function renderSongWav(){
   var sd=songDef();if(!sd)return null;
   var sr=22050,n=Math.floor(sr*CYCLE),data=new Float32Array(n);
   var beat=CYCLE/12;
   sd.tracks.forEach(function(tr){
-    tr.notes.forEach(function(note){
-      var f=midiHz(note[0]),v=tr.vol*(note[3]||1);
-      var att=(tr.type==='pad'?.4:.05)*beat,rel=(tr.type==='pad'?.6:.18)*beat;
-      var st=Math.floor(note[1]*CYCLE*sr),nd=Math.floor((note[1]+note[2])*CYCLE*sr);
-      var aI=Math.max(1,Math.floor(att*sr)),rI=Math.max(1,Math.floor(rel*sr));
-      for(var i=st;i<nd&&i<n;i++){
-        var t=(i-st)/sr,env=1;
-        if(i-st<aI)env=(i-st)/aI;
-        var rp=nd-i;if(rp<rI)env=Math.min(env,rp/rI);
-        data[i]+=Math.sin(2*Math.PI*f*t)*v*env;
-        if(tr.pad)data[i]+=Math.sin(2*Math.PI*f*1.004*t)*v*env*.8;
-      }
-    });
+    if(tr.type==='pad'){renderPads(data,tr,beat,sr,n);}
+    else{renderGlide(data,tr,sr,n);}
   });
   var peak=0;for(var i=0;i<n;i++){var a=Math.abs(data[i]);if(a>peak)peak=a;}
   if(peak>.5){var s=.5/peak;for(var i=0;i<n;i++)data[i]*=s;}
   return wavFromData(data,sr);
+}
+function renderPads(data,tr,beat,sr,n){
+  tr.notes.forEach(function(note){
+    var f=midiHz(note[0]),v=tr.vol*(note[3]||1);
+    var att=1.0*beat,rel=1.2*beat;
+    var st=Math.floor(note[1]*CYCLE*sr),nd=Math.floor((note[1]+note[2])*CYCLE*sr);
+    var aI=Math.max(1,Math.floor(att*sr)),rI=Math.max(1,Math.floor(rel*sr));
+    for(var i=st;i<nd&&i<n;i++){
+      var t=(i-st)/sr,env=1;
+      if(i-st<aI)env=(i-st)/aI;
+      var rp=nd-i;if(rp<rI)env=Math.min(env,rp/rI);
+      data[i]+=Math.sin(2*Math.PI*f*t)*v*env;
+      data[i]+=Math.sin(2*Math.PI*f*1.004*t)*v*env*.8;
+    }
+  });
+}
+function renderGlide(data,tr,sr,n){
+  var notes=tr.notes,v=tr.vol;
+  // build glide segments [startSec, freq0, endSec, freq1]
+  var seg=[];
+  for(var i=0;i<notes.length;i++){
+    var a=notes[i],b=notes[(i+1)%notes.length];
+    var st=a[1]*CYCLE,nd=(b[1]<=a[1])?CYCLE:(b[1]*CYCLE);
+    if(nd<=st)continue;
+    seg.push([st,midiHz(a[0]),nd,midiHz(b[0])]);
+  }
+  var ph=0,si=0;
+  var fade=Math.floor(sr*.15);
+  for(var i=0;i<n;i++){
+    var t=i/sr;
+    while(si<seg.length-1&&t>seg[si+1][0])si++;
+    var s0=seg[si];
+    var u=Math.min(1,Math.max(0,(t-s0[0])/(s0[2]-s0[0])));
+    var f=s0[1]+(s0[3]-s0[1])*u;
+    ph+=2*Math.PI*f/sr;
+    var env=1;
+    if(i<fade)env=i/fade;
+    else if(i>n-fade)env=(n-i)/fade;
+    data[i]+=Math.sin(ph)*v*env;
+  }
 }
 function fallbackSrc(){return songDef()?renderSongWav():glideWavUrl();}
 function audioLabel(){var sd=songDef();return sd?sd.name:null;}
@@ -618,6 +693,7 @@ function stop(){
   clearTimeout(modeTimer);
   clearInterval(schedTimer);schedTimer=null;
   cancelAnimationFrame(raf);
+  stopGlide();
   killAll();
   if(master)master.gain.value=0;
   if(fallbackEl){try{fallbackEl.pause();fallbackEl.currentTime=0;}catch(e){}}
