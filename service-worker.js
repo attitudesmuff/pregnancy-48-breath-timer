@@ -4,7 +4,7 @@
    - static files: cache first, refreshed in the background
    - cross-origin (Google Fonts) is left alone
 */
-var CACHE = 'yasis-v2';
+var CACHE = 'yasis-v3';
 var SHELL = [
   './',
   './index.html',

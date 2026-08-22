@@ -140,6 +140,7 @@
   <p class="note">Slow, not big. Keep the breath easy — forcing it deep causes tingling and light-headedness.</p>
   <p id="iosNote" class="note" style="display:none">On iPhone, if you hear no sound, check the mute switch on the side of the phone — it silences web-app audio too.</p>
   <p id="audioStatus" class="note" style="display:none"></p>
+  <p id="ver" class="count" style="opacity:.3">v3</p>
 </div>
 <div class="install-hint" id="installHint">
   Tap <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong>
@@ -274,7 +275,8 @@ var countEl=document.getElementById('count'),playBtn=document.getElementById('pl
 var volEl=document.getElementById('vol'),buzzBtn=document.getElementById('buzz');
 var presetEl=document.getElementById('preset'),soundEl=document.getElementById('sound');
 
-var ctx=null,master=null,running=false,cycleStart=0,nextCycle=0,schedTimer=null,raf=null,startToken=0;
+var ctx=null,master=null,running=false,nextCycle=0,schedTimer=null,raf=null,startToken=0;
+var T0=0,mode='none',modeTimer=null,fallbackEl=null;
 var breaths=0,lastPhase=null,buzz=false,sound='smooth';
 var currentText='',wordSpans=[];
 
@@ -349,6 +351,48 @@ function warmMedia(){
     warmEl.volume=0;warmEl.play().catch(function(){});
   }catch(e){}
 }
+// ── FALLBACK AUDIO ──
+// If iOS refuses to run the Web Audio context, fall back to a looped <audio>
+// element playing a pre-rendered glide tone (generated here, no extra files).
+function glideWavUrl(){
+  var sr=22050,dur=CYCLE,n=Math.floor(sr*dur),data=new Float32Array(n),ph=0,fade=Math.floor(sr*.02);
+  for(var i=0;i<n;i++){
+    var sec=i/sr,u=sec<IN?sec/IN:(sec-IN)/OUT;
+    var e=.5*(1-Math.cos(Math.PI*u));
+    var f=sec<IN?(190+(300-190)*e):(300-(300-135)*e);
+    ph+=2*Math.PI*f/sr;
+    var a=1;if(i<fade)a=i/fade;else if(i>n-fade)a=(n-i)/fade;
+    data[i]=Math.sin(ph)*.5*a;
+  }
+  var buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+  var s=function(o,str){for(var j=0;j<str.length;j++)v.setUint8(o+j,str.charCodeAt(j));};
+  s(0,'RIFF');v.setUint32(4,36+n*2,true);s(8,'WAVE');s(12,'fmt ');v.setUint32(16,16,true);
+  v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);
+  v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);
+  s(36,'data');v.setUint32(40,n*2,true);
+  var bytes=new Uint8Array(buf);
+  for(var i=0;i<n;i++){var val=Math.floor(Math.max(-1,Math.min(1,data[i]))*32767);bytes[44+i*2]=val&255;bytes[45+i*2]=(val>>8)&255;}
+  var bin='',chunk=0xC000; // 49152, divisible by 3 -> no per-chunk btoa padding
+  for(var i=0;i<bytes.length;i+=chunk)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
+  var b64='';
+  for(var i=0;i<bin.length;i+=chunk)b64+=btoa(bin.substr(i,chunk));
+  return 'data:audio/wav;base64,'+b64;
+}
+function primeFallback(){
+  if(!fallbackEl){
+    try{fallbackEl=new Audio(glideWavUrl());}catch(e){return;}
+    fallbackEl.loop=true;
+  }
+  try{
+    fallbackEl.volume=0;
+    fallbackEl.currentTime=0;
+    var p=fallbackEl.play();if(p&&p.catch)p.catch(function(){});
+  }catch(e){}
+}
+function unmuteFallback(){
+  if(!fallbackEl)return;
+  fallbackEl.volume=Math.max(.05,volEl.value/100*.8);
+}
 function pad(t0,dur,f0,f1,peak){
   var o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain(),g2=ctx.createGain(),lp=ctx.createBiquadFilter();
   lp.type='lowpass';lp.frequency.value=1200;lp.Q.value=.5;o.type='sine';o2.type='triangle';g2.gain.value=.18;
@@ -371,59 +415,84 @@ function scheduleCycle(t0){
   if(sound==='counts'){for(var i=0;i<IN;i++)tick(t0+i,true);for(var j=0;j<OUT;j++)tick(t0+IN+j,false);}
   else if(sound==='marks'){tick(t0,true);tick(t0+IN,false);}
 }
-function scheduler(){while(nextCycle<ctx.currentTime+1.5){scheduleCycle(nextCycle);nextCycle+=CYCLE;}}
+function scheduler(){
+  if(!running)return;
+  if(mode==='web'){audioGo();}
+  else if(mode==='none'){
+    if(ctx&&ctx.state==='running'){mode='web';nextCycle=performance.now()+300;audioGo();}
+    else if(ctx&&ctx.state==='suspended'){pump();}
+  }
+  updateStatus();
+}
 
 function draw(){
-  var t=((ctx.currentTime-cycleStart)%CYCLE+CYCLE)%CYCLE;
-  var idx=Math.min(N,Math.floor(t/CYCLE*N));
+  var sec;
+  if(mode==='fallback'&&fallbackEl&&fallbackEl.currentTime>0){
+    sec=fallbackEl.currentTime%CYCLE; // follow the fallback loop
+  }else{
+    sec=((performance.now()-T0)/1000)%CYCLE;
+    if(sec<0)sec+=CYCLE;
+  }
+  var idx=Math.min(N,Math.floor(sec/CYCLE*N));
   trace.setAttribute('d',toPath(pts.slice(0,idx+1)));
   dot.setAttribute('cx',pts[idx].x);dot.setAttribute('cy',pts[idx].y);
-  var inhaling=t<IN,prog=inhaling?t/IN:(t-IN)/OUT;
+  var inhaling=sec<IN,prog=inhaling?sec/IN:(sec-IN)/OUT;
   renderWords(inhaling?words.in:words.out);
   lightWords(prog,inhaling?'li':'lo');
   dot.setAttribute('fill',inhaling?'#8FA77E':'#C4785A');
-  phaseEl.textContent=(inhaling?'breathe in · ':'breathe out · ')+(inhaling?IN-Math.floor(t):OUT-Math.floor(t-IN));
+  phaseEl.textContent=(inhaling?'breathe in · ':'breathe out · ')+(inhaling?IN-Math.floor(sec):OUT-Math.floor(sec-IN));
   var phase=inhaling?'in':'out';
   if(phase!==lastPhase){
     if(lastPhase==='out'){breaths++;countEl.textContent=breaths+(breaths===1?' breath':' breaths');}
-    if(buzz&&navigator.vibrate)navigator.vibrate(inhaling?45:[30,60,30]);lastPhase=phase;
+    if(buzz&&navigator.vibrate)navigator.vibrate(inhaling?45:[30,60,30]);
+    lastPhase=phase;
   }
   raf=requestAnimationFrame(draw);
+}
+
+// ── WEB AUDIO PATH ──
+function audioGo(){
+  if(!running||!ctx||ctx.state!=='running')return;
+  var now=performance.now();
+  while(nextCycle<now+1500){
+    scheduleCycle(ctx.currentTime+(nextCycle-now)/1000);
+    nextCycle+=CYCLE*1000;
+  }
+}
+function updateStatus(){
+  if(!running)return;
+  if(mode==='web'){setAudioStatus('audio: running');}
+  else if(mode==='fallback'){
+    setAudioStatus(fallbackEl&&fallbackEl.volume>0?'audio: fallback tone':'audio blocked — check the mute switch, then tap Start again');
+  }
+  else if(ctx&&ctx.state==='suspended'){setAudioStatus('audio blocked — check the mute switch, then tap Start again');}
 }
 function start(){
   initAudio();
   var my=++startToken;
   running=true;playBtn.textContent='Pause';
   if(master)master.gain.value=volEl.value/100*.6;
-  var go=function(){
-    if(!running||my!==startToken)return;
-    var t0=ctx.currentTime+.2;
-    cycleStart=t0;nextCycle=t0;lastPhase=null;
-    scheduler();schedTimer=setInterval(scheduler,250);
-    raf=requestAnimationFrame(draw);
-    setAudioStatus('audio: running');
-  };
-  var fail=function(){
-    if(my!==startToken)return;
-    running=false;playBtn.textContent='Start';
-    setAudioStatus('audio blocked — check the mute switch, then tap Start again');
-  };
-  var attempt=function(k){
-    if(!running||my!==startToken)return;
-    if(ctx.state==='running'){go();return;}
-    if(ctx.state==='suspended'&&k<6){pump();setTimeout(function(){attempt(k+1);},150);}
-    else{fail();}
-  };
-  ping();
-  if(ctx.state==='running'){go();}
-  else{pump();attempt(1);}
+  T0=performance.now()+200;nextCycle=T0;lastPhase=null;mode='none';
+  ping();pump();primeFallback(); // all inside the tap gesture
+  clearTimeout(modeTimer);
+  modeTimer=setTimeout(function(){
+    if(my!==startToken||!running)return;
+    if(ctx&&ctx.state==='running'){mode='web';if(fallbackEl){try{fallbackEl.pause();}catch(e){}}audioGo();}
+    else{mode='fallback';unmuteFallback();}
+    updateStatus();
+  },900);
+  schedTimer=setInterval(scheduler,250);
+  raf=requestAnimationFrame(draw);
+  updateStatus();
 }
 function stop(){
   running=false;startToken++;
+  clearTimeout(modeTimer);
   clearInterval(schedTimer);schedTimer=null;
   cancelAnimationFrame(raf);
   killAll();
   if(master)master.gain.value=0;
+  if(fallbackEl){try{fallbackEl.pause();fallbackEl.currentTime=0;}catch(e){}}
   playBtn.textContent='Start';
   renderWords(words.in);wordSpans.forEach(function(s){s.className='w';});
   phaseEl.textContent='paused';
