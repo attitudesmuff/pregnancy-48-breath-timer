@@ -129,9 +129,10 @@
   </div>
   <div class="row"><label for="sound">Sound</label>
     <select id="sound">
-      <option value="smooth" selected>Gliding tone only</option>
-      <option value="marks">Tone + turn markers</option>
-      <option value="counts">Tone + per-second counts</option>
+      <option value="soft" selected>Soft glide</option>
+      <option value="deep">Deep wave</option>
+      <option value="bright">Bright wave</option>
+      <option value="flute">Flute tone</option>
     </select>
   </div>
   <div class="row"><label for="vol">Volume</label><input id="vol" type="range" min="0" max="100" value="55"></div>
@@ -140,7 +141,7 @@
   <p class="note">Slow, not big. Keep the breath easy — forcing it deep causes tingling and light-headedness.</p>
   <p id="iosNote" class="note" style="display:none">On iPhone, if you hear no sound, check the mute switch on the side of the phone — it silences web-app audio too.</p>
   <p id="audioStatus" class="note" style="display:none"></p>
-  <p id="ver" class="count" style="opacity:.3">v3</p>
+  <p id="ver" class="count" style="opacity:.3">v4</p>
 </div>
 <div class="install-hint" id="installHint">
   Tap <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong>
@@ -277,7 +278,7 @@ var presetEl=document.getElementById('preset'),soundEl=document.getElementById('
 
 var ctx=null,master=null,running=false,nextCycle=0,schedTimer=null,raf=null,startToken=0;
 var T0=0,mode='none',modeTimer=null,fallbackEl=null;
-var breaths=0,lastPhase=null,buzz=false,sound='smooth';
+var breaths=0,lastPhase=null,buzz=false,sound='soft';
 var currentText='',wordSpans=[];
 
 function renderWords(text){
@@ -354,15 +355,25 @@ function warmMedia(){
 // ── FALLBACK AUDIO ──
 // If iOS refuses to run the Web Audio context, fall back to a looped <audio>
 // element playing a pre-rendered glide tone (generated here, no extra files).
+// Matches the selected wave sound (pitch + harmonics).
+function glideWaveParams(){
+  if(sound==='deep')return {scale:.72,harm:0};
+  if(sound==='bright')return {scale:1.18,harm:.22};
+  if(sound==='flute')return {scale:1,harm:.35};
+  return {scale:1,harm:0};
+}
 function glideWavUrl(){
+  var w=glideWaveParams();
   var sr=22050,dur=CYCLE,n=Math.floor(sr*dur),data=new Float32Array(n),ph=0,fade=Math.floor(sr*.02);
   for(var i=0;i<n;i++){
     var sec=i/sr,u=sec<IN?sec/IN:(sec-IN)/OUT;
     var e=.5*(1-Math.cos(Math.PI*u));
-    var f=sec<IN?(190+(300-190)*e):(300-(300-135)*e);
+    var f=(sec<IN?(190+(300-190)*e):(300-(300-135)*e))*w.scale;
     ph+=2*Math.PI*f/sr;
+    var snd=Math.sin(ph);
+    if(w.harm>0)snd+=Math.sin(ph*2)*w.harm;
     var a=1;if(i<fade)a=i/fade;else if(i>n-fade)a=(n-i)/fade;
-    data[i]=Math.sin(ph)*.5*a;
+    data[i]=snd*.5*a;
   }
   var buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
   var s=function(o,str){for(var j=0;j<str.length;j++)v.setUint8(o+j,str.charCodeAt(j));};
@@ -379,8 +390,9 @@ function glideWavUrl(){
   return 'data:audio/wav;base64,'+b64;
 }
 function primeFallback(){
+  if(fallbackEl&&fallbackEl._wave!==sound){try{fallbackEl.pause();}catch(e){}fallbackEl=null;}
   if(!fallbackEl){
-    try{fallbackEl=new Audio(glideWavUrl());}catch(e){return;}
+    try{fallbackEl=new Audio(glideWavUrl());fallbackEl._wave=sound;}catch(e){return;}
     fallbackEl.loop=true;
   }
   try{
@@ -395,25 +407,21 @@ function unmuteFallback(){
 }
 function pad(t0,dur,f0,f1,peak){
   var o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain(),g2=ctx.createGain(),lp=ctx.createBiquadFilter();
-  lp.type='lowpass';lp.frequency.value=1200;lp.Q.value=.5;o.type='sine';o2.type='triangle';g2.gain.value=.18;
-  [o,o2].forEach(function(x){x.frequency.setValueAtTime(f0,t0);x.frequency.linearRampToValueAtTime(f1,t0+dur);});
+  var f0a=f0,f1a=f1,ot='sine',ot2='triangle',g2v=.18,lpf=1200;
+  if(sound==='deep'){f0a=f0*.72;f1a=f1*.72;ot='sine';ot2='sine';g2v=.28;lpf=850;}
+  else if(sound==='bright'){f0a=f0*1.18;f1a=f1*1.18;ot='triangle';ot2='sine';g2v=.10;lpf=2400;}
+  else if(sound==='flute'){ot='sine';ot2='sine';g2v=.14;lpf=1500;}
+  lp.type='lowpass';lp.frequency.value=lpf;lp.Q.value=.5;
+  o.type=ot;o2.type=ot2;g2.gain.value=g2v;
+  [o,o2].forEach(function(x){x.frequency.setValueAtTime(f0a,t0);x.frequency.linearRampToValueAtTime(f1a,t0+dur);});
   g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(peak,t0+Math.min(.6,dur*.15));
   g.gain.setValueAtTime(peak,t0+dur*.7);g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
   o.connect(lp);o2.connect(g2);g2.connect(lp);lp.connect(g);g.connect(master);
   track(o);track(o2);
   o.start(t0);o2.start(t0);o.stop(t0+dur+.05);o2.stop(t0+dur+.05);
 }
-function tick(t0,bright){
-  var o=ctx.createOscillator(),g=ctx.createGain();o.type=bright?'triangle':'sine';
-  o.frequency.setValueAtTime(bright?880:330,t0);if(!bright)o.frequency.exponentialRampToValueAtTime(240,t0+.3);
-  g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(bright?.13:.09,t0+.012);
-  g.gain.exponentialRampToValueAtTime(.0001,t0+(bright?.14:.36));
-  o.connect(g);g.connect(master);track(o);o.start(t0);o.stop(t0+.45);
-}
 function scheduleCycle(t0){
   pad(t0,IN,190,300,.14);pad(t0+IN,OUT,300,135,.12);
-  if(sound==='counts'){for(var i=0;i<IN;i++)tick(t0+i,true);for(var j=0;j<OUT;j++)tick(t0+IN+j,false);}
-  else if(sound==='marks'){tick(t0,true);tick(t0+IN,false);}
 }
 function scheduler(){
   if(!running)return;

@@ -52,7 +52,7 @@ class FakeAudio {
 }
 
 class OscNode {
-  constructor(ctx) { this.ctx = ctx; this.type = 'sine'; this.frequency = { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }; this.onended = null; this.startT = null; this.stopT = null; }
+  constructor(ctx) { this.ctx = ctx; this.type = 'sine'; this.frequency = { value: 0, freqs: [], setValueAtTime(v, t) { this.freqs.push(v); }, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }; this.onended = null; this.startT = null; this.stopT = null; }
   connect() {} disconnect() {}
   start(t) { this.startT = t; this.ctx.oscs.push(this); }
   stop(t) { this.stopT = t; if (this.onended) setTimeout(() => this.onended(), 0); }
@@ -67,7 +67,7 @@ function runScenario(name, ctxImpl) {
   const els = {};
   ids.forEach(id => els[id] = makeEl(id));
   els.vol.value = '55';
-  els.sound.value = 'smooth';
+  els.sound.value = 'soft';
   els.preset.value = 'closer-en';
 
   const doc = {
@@ -126,6 +126,14 @@ function runScenario(name, ctxImpl) {
     await s.sleep(1700); // 2.8s total > 2 cycles (2.4s)
     const n = parseInt(s.els.count.textContent) || 0;
     check('count increments over cycles (>=2)', n >= 2, s.els.count.textContent);
+    // switch wave sound mid-run and verify the tone changes (deep = 0.72x freq)
+    const before = s.ctxObj.oscs.length;
+    s.els.sound.value = 'deep';
+    (s.els.sound._listeners.change || []).forEach(f => f());
+    await s.sleep(1400); // one full cycle scheduled under 'deep'
+    check('deep pads scheduled with lower freq', s.ctxObj.oscs.slice(before).some(o => o.frequency.freqs[0] < 150), 'min=' + Math.min.apply(null, s.ctxObj.oscs.slice(before).map(o => o.frequency.freqs[0] || 999)));
+    s.els.sound.value = 'soft';
+    (s.els.sound._listeners.change || []).forEach(f => f());
     s.tapStart(); // stop
     check('stop returns button to Start', s.els.play.textContent === 'Start');
     check('phase says paused', s.els.phase.textContent === 'paused', s.els.phase.textContent);
